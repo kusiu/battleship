@@ -3,7 +3,7 @@
 namespace AppBundle\Entity;
 
 /**
- *  Ship
+ *  Ship Abstract class
  */
 abstract class Ship
 {
@@ -21,6 +21,11 @@ abstract class Ship
 
     public function getLength() {
         return $this->length;
+    }
+
+    public function setLength($length)
+    {
+        $this->length = $length;
     }
 
     public function getName() {
@@ -45,7 +50,8 @@ abstract class Ship
      *  given column and row counts
      *
      *  @param int $max_col
-     *  @param int $max_row_
+     *  @param int $max_row
+     *  @return array
      *
      */
     public function generateCoords($max_col, $max_row)
@@ -70,6 +76,7 @@ abstract class Ship
      * Checks if the given ship overlaps with this ship
      *
      * @param $other_ship array
+     * @return boolean
      *
      */
     public function overlapsWith($other_ship)
@@ -86,6 +93,7 @@ abstract class Ship
      *  Checks if the given coordinate overlaps this ship
      *
      * @param $coord array
+     * @return boolean
      *
      */
     public function overlaps($coord)
@@ -102,6 +110,7 @@ abstract class Ship
      * Checks if this ship has been sunk
      *
      * @param $hits array
+     * @return boolean
      */
     public function isSunk($hits)
     {

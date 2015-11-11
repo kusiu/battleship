@@ -43,6 +43,9 @@ class DefaultController extends Controller
 
         $ships = [];
 
+        /*
+         * Place ships on the grid at random
+         */
         foreach ($shipsList as $ship) {
 
             $not_found = true;
@@ -66,7 +69,8 @@ class DefaultController extends Controller
 
         // replace this example code with whatever you need
         return $this->render('default/index.html.twig', array(
-            'outputGrid' => $this->outputGrid()
+            'outputGrid' => $this->outputGrid(),
+            'message' => 'Are you ready? Good luck!'
         ));
     }
 
@@ -77,14 +81,69 @@ class DefaultController extends Controller
     public function strikeAction(Request $request)
     {
 
+        $curr_board = json_decode($_COOKIE['battleship'], true);
+        $ships = $curr_board['ships'];
+        $hits = $curr_board['hits'];
+        $miss = $curr_board['miss'];
 
+        $this->setHits($hits);
+        $this->setMiss($miss);
+
+        $ship_objs = array();
+        foreach ($ships as $ship) {
+
+            $currentShip = ShipFactory::create($ship['name']);
+            $currentShip->setCoordinates($ship['coordinates']);
+            $currentShip->setLength(count($ship['coordinates']));
+            $ship_objs[] = $currentShip;
+        }
+
+        $this->setShips($ship_objs);
+
+        $message = $this->checkCoordinates($request->request->get('coordinates'));
 
         $this->saveSetting();
 
         // replace this example code with whatever you need
         return $this->render('default/index.html.twig', array(
-            'outputGrid' => $this->outputGrid()
+            'outputGrid' => $this->outputGrid(),
+            'message'   => $message
         ));
+    }
+
+    /**
+     *  Processes the coordinate given by user.
+     *
+     *  @param $coordinates array
+     *  @return string
+     *
+     */
+    public function checkCoordinates($coordinates)
+    {
+        if (!$this->isValidCoord($coordinates)) {
+            return  'Error: Please enter a valid coordinate';
+        } else {
+            if ($this->getSuccessHits() == 13) {
+                return 'You won! It took you '.$this->getAttempts().' turns to win.  Refresh the page to start a new game.';
+            } else {
+                $converted_coord = $this->convertCoord($coordinates);
+                $hit = $this->checkHit($converted_coord);
+                if ($hit) {
+                    $this->addHits($converted_coord);
+                    if ($this->getSuccessHits() == 13) {
+                        return 'You won! It took you '.$this->getAttempts().' turns to win.  Refresh the page to start a new game.';
+                    }
+                    if ($this->checkSunkShip($converted_coord)) {
+                        return 'Congratulation! You have sunk a ship!';
+                    } else {
+                        return 'Hit!';
+                    }
+                } else {
+                    $this->addMiss($converted_coord);
+                    return 'Miss!';
+                }
+            }
+        }
     }
 
     /**
@@ -100,9 +159,9 @@ class DefaultController extends Controller
             $grid .= ($x == 0) ? "<thead><th></th>":"<tr>";
             while ($y <= self::BOARD_WIDTH) {
                 if ($x == 0 && $y> 0) {
-                    $grid .= "<td>".$this->boardHeightHead[$y-1]."</td>";
+                    $grid .= "<td>".$this->boardWithHead[$y-1]."</td>";
                 } elseif ($x > 0 && $y == 0) {
-                    $grid .= "<th>".$this->boardWithHead[$x-1]."</th>";
+                    $grid .= "<th>".$this->boardHeightHead[$x-1]."</th>";
                 } elseif ($x > 0 && $y > 0) {
                     $grid .= "<td>".$this->outputElem(array($x,$y))."</td>";
                 }
@@ -140,6 +199,68 @@ class DefaultController extends Controller
         return '.';
     }
 
+    /**
+     *
+     * Helper function to check if the user inputed value is valid
+     *
+     * @param $coord array
+     * @return boolean
+     */
+    private function isValidCoord($coord)
+    {
+        // Is only 2 characters
+        if (empty($coord)) {
+            return false;
+        }
+
+        $len = (strlen($coord) == 2);
+        if ($len) {
+            $int = (ctype_digit($coord[1]));
+            $alpha = (ctype_alpha($coord[0]));
+            $less_than_j = (strcasecmp($coord[0], 'K') < 0);
+        }
+        return (($len && $int && $alpha && $less_than_j));
+    }
+
+    /**
+     *
+     * Helper function to convert the user coordinate, into grid format
+     *
+     * @param $coord array
+     * @return string
+     *
+     */
+    private function convertCoord($coord)
+    {
+        $int_coord = ($coord[1] == 0) ? 10 : $coord[1];
+        $col_map = array_flip($this->boardHeightHead);
+        $val = array($col_map[strtoupper($coord[0])] + 1, (int)$int_coord);
+        if ($val[1] == 0) {
+            return $val[0]."10";
+        } else {
+            return $val;
+        }
+    }
+
+    /**
+     *
+     * Helper function to check if a coordinate hits any ship on the board
+     *
+     * @param $coord array
+     * @return boolean
+     *
+     */
+    private function checkHit($coord)
+    {
+        foreach ($this->getShips() as $ship) {
+            $hit = $ship->overlaps($coord);
+            if ($hit) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public function saveSetting() {
 
         $setup = array(
@@ -157,11 +278,16 @@ class DefaultController extends Controller
     public function getShipsCoordinates()
     {
 
-        $slist = array();
+        $ships = array();
         foreach ($this->ships as $ship) {
-            $slist[] = $ship->getCoordinates();
+
+            array_push($ships, [
+                'name' => $ship->getName(),
+                'coordinates' => $ship->getCoordinates()
+            ]);
         }
-        return $slist;
+
+        return $ships;
     }
 
     public function getHits()
@@ -182,6 +308,53 @@ class DefaultController extends Controller
     public function setShips($ships)
     {
         $this->ships = $ships;
+    }
+
+    public function setHits($hits)
+    {
+        $this->hits = $hits;
+    }
+
+    public function setMiss($miss)
+    {
+        $this->miss = $miss;
+    }
+
+    public function addHits($hits)
+    {
+        $this->hits[$hits[0].$hits[1]] = $hits;
+    }
+
+    public function addMiss($miss)
+    {
+        $m = $this->miss;
+        $key = $miss[0].$miss[1];
+        $m[$key] = $miss;
+        $this->miss = $m;
+    }
+
+    public function getAttempts()
+    {
+        return count($this->getHits()) + count($this->getMiss());
+    }
+
+    public function getSuccessHits()
+    {
+        return count($this->getHits());
+    }
+
+    /**
+     *
+     * Check if any ship is sunk by this hit
+     */
+    public function checkSunkShip($coord)
+    {
+        foreach ($this->getShips() as $ship) {
+            if ($ship->overlaps($coord)) {
+                return $ship->isSunk($this->getHits());
+            }
+        }
+        return false;
     }
 
     /**
